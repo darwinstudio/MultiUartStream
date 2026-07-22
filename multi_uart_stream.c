@@ -1,6 +1,8 @@
 /**
  * @file multi_uart_stream.c
  * @brief MultiUartStream 库实现
+ *
+ * 基于 FreeRTOS StreamBuffer + DMA + IDLE 检测的多实例 UART 异步收发驱动。
  */
 
 #include "multi_uart_stream.h"
@@ -8,56 +10,25 @@
 #include "task.h"
 #include <stdio.h>
 
-/* ========== 编译期安全校验 ========== */
-
-/** 配置表中的 rx_buff_size 不得超过静态分配的 DMA 缓冲区 */
-#define MUS_CHECK_RX_BUFF_SIZE(idx)                                                                                    \
-    _Static_assert((idx) >= MUS_COUNT || mus_hw_table[idx].rx_buff_size <= MUS_RX_BUFFER_SIZE,                         \
-                   "mus_hw_table[" #idx "].rx_buff_size exceeds MUS_RX_BUFFER_SIZE")
-
-/** 配置表中的 stream_buff_size 不得超过静态分配的流缓冲区 */
-#define MUS_CHECK_STREAM_SIZE(idx)                                                                                     \
-    _Static_assert((idx) >= MUS_COUNT || mus_hw_table[idx].stream_buff_size <= MUS_STREAM_BUFF_SIZE,                   \
-                   "mus_hw_table[" #idx "].stream_buff_size exceeds MUS_STREAM_BUFF_SIZE")
-
-/* 展开最多 16 个实例的编译期检查（无运行时开销） */
-MUS_CHECK_RX_BUFF_SIZE(0);
-MUS_CHECK_RX_BUFF_SIZE(1);
-MUS_CHECK_RX_BUFF_SIZE(2);
-MUS_CHECK_RX_BUFF_SIZE(3);
-MUS_CHECK_RX_BUFF_SIZE(4);
-MUS_CHECK_RX_BUFF_SIZE(5);
-MUS_CHECK_RX_BUFF_SIZE(6);
-MUS_CHECK_RX_BUFF_SIZE(7);
-MUS_CHECK_STREAM_SIZE(0);
-MUS_CHECK_STREAM_SIZE(1);
-MUS_CHECK_STREAM_SIZE(2);
-MUS_CHECK_STREAM_SIZE(3);
-MUS_CHECK_STREAM_SIZE(4);
-MUS_CHECK_STREAM_SIZE(5);
-MUS_CHECK_STREAM_SIZE(6);
-MUS_CHECK_STREAM_SIZE(7);
-
 /* ========== 内部实例结构体 ========== */
 
+/** @brief 每个 UART 实例的运行时状态 */
 typedef struct
 {
-    const MUS_HwConfig_t *config;
+    const MUS_HwConfig_t *config; /**< 指向硬件配置表条目 */
 
     /* RX 相关（enable_rx=1 时有效） */
-    StreamBufferHandle_t rx_stream;
-    StaticStreamBuffer_t rx_stream_cb;
-    uint8_t rx_stream_buf[MUS_STREAM_BUFF_SIZE + 1];
-    uint8_t rx_dma_buf[MUS_RX_BUFFER_SIZE];
+    StreamBufferHandle_t rx_stream;            /**< 接收流缓冲区句柄 */
+    StaticStreamBuffer_t rx_stream_cb;         /**< 接收流缓冲区控制块 */
+    uint8_t rx_stream_buf[MUS_STREAM_BUFF_SIZE + 1]; /**< 接收流缓冲区 */
+    uint8_t rx_dma_buf[MUS_RX_BUFFER_SIZE];    /**< DMA 接收缓冲区 */
 
     /* TX 相关（enable_tx=1 时有效） */
-    StreamBufferHandle_t tx_stream;
-    StaticStreamBuffer_t tx_stream_cb;
-    uint8_t tx_stream_buf[MUS_STREAM_BUFF_SIZE + 1];
-    SemaphoreHandle_t tx_sem;
-    StaticSemaphore_t tx_sem_cb;
-    SemaphoreHandle_t tx_mutex;
-    StaticSemaphore_t tx_mutex_cb;
+    StreamBufferHandle_t tx_stream;            /**< 发送流缓冲区句柄 */
+    StaticStreamBuffer_t tx_stream_cb;         /**< 发送流缓冲区控制块 */
+    uint8_t tx_stream_buf[MUS_STREAM_BUFF_SIZE + 1]; /**< 发送流缓冲区 */
+    SemaphoreHandle_t tx_sem;                  /**< TX 完成信号量 */
+    StaticSemaphore_t tx_sem_cb;               /**< TX 信号量控制块 */
 } MUS_Instance_t;
 
 static MUS_Instance_t s_instances[MUS_COUNT];
@@ -75,6 +46,7 @@ static char tx_task_name[MUS_COUNT][configMAX_TASK_NAME_LEN];
 
 /**
  * @brief 启动 DMA + IDLE 检测接收
+ * @param inst 目标实例指针
  */
 static void open_rx_idle(MUS_Instance_t *inst)
 {
@@ -87,20 +59,39 @@ static void open_rx_idle(MUS_Instance_t *inst)
         HAL_UART_AbortReceive(huart);
     }
 
-    HAL_StatusTypeDef status = HAL_UARTEx_ReceiveToIdle_DMA(huart, inst->rx_dma_buf, inst->config->rx_buff_size);
+    HAL_StatusTypeDef status = HAL_UARTEx_ReceiveToIdle_DMA(huart, inst->rx_dma_buf, MUS_RX_BUFFER_SIZE);
     if (status != HAL_OK)
     {
         HAL_UART_AbortReceive(huart);
-        HAL_UARTEx_ReceiveToIdle_DMA(huart, inst->rx_dma_buf, inst->config->rx_buff_size);
+        HAL_UARTEx_ReceiveToIdle_DMA(huart, inst->rx_dma_buf, MUS_RX_BUFFER_SIZE);
         return;
     }
     __HAL_DMA_DISABLE_IT(huart->hdmarx, DMA_IT_HT);
+}
+
+/**
+ * @brief 内部 DMA 发送（由 TX 任务调用）
+ * @param id  实例 ID
+ * @param data 待发送数据
+ * @param len  数据长度
+ */
+static void mus_tx_data(MUS_Id_e id, const uint8_t *data, uint16_t len)
+{
+    if (HAL_UART_Transmit_DMA(s_instances[id].config->huart, data, len) == HAL_OK)
+    {
+        if (xSemaphoreTake(s_instances[id].tx_sem, pdMS_TO_TICKS(2000)) != pdTRUE)
+        {
+            HAL_UART_AbortTransmit(s_instances[id].config->huart);
+        }
+    }
 }
 
 /* ========== HAL 回调 ========== */
 
 /**
  * @brief DMA 接收完成回调（IDLE 检测触发）
+ * @param huart 触发回调的 UART 句柄
+ * @param len   本次接收到的字节数
  */
 static void rx_event_callback(UART_HandleTypeDef *huart, uint16_t len)
 {
@@ -126,6 +117,7 @@ static void rx_event_callback(UART_HandleTypeDef *huart, uint16_t len)
 
 /**
  * @brief DMA 发送完成回调
+ * @param huart 触发回调的 UART 句柄
  */
 static void tx_cplt_callback(UART_HandleTypeDef *huart)
 {
@@ -148,6 +140,7 @@ static void tx_cplt_callback(UART_HandleTypeDef *huart)
 
 /**
  * @brief UART 错误回调
+ * @param huart 触发回调的 UART 句柄
  */
 static void uart_error_callback(UART_HandleTypeDef *huart)
 {
@@ -172,64 +165,62 @@ static void uart_error_callback(UART_HandleTypeDef *huart)
     }
 }
 
-/* ========== RX 任务 ========== */
+/* ========== 任务入口 ========== */
 
+/**
+ * @brief RX 任务入口（逐字节接收并调用解析回调）
+ * @param para 任务参数，转换为 MUS_Id_e 实例 ID
+ */
 static void rx_task_entry(void *para)
 {
     MUS_Id_e id = (MUS_Id_e)(uint32_t)para;
-    uint8_t buf[MUS_RX_BUFFER_SIZE];
+    uint8_t byte;
 
     for (;;)
     {
-        size_t len = xStreamBufferReceive(s_instances[id].rx_stream, buf, sizeof(buf), portMAX_DELAY);
-        if (len > 0)
+        if (xStreamBufferReceive(s_instances[id].rx_stream, &byte, 1, portMAX_DELAY) == 1)
         {
-            MUS_RxCallback(id, buf, len);
+            MUS_ParseByte(id, byte);
         }
     }
 }
 
-/* ========== TX 任务 ========== */
-
+/**
+ * @brief TX 任务入口（从发送流读取并通过 DMA 发送）
+ * @param para 任务参数，转换为 MUS_Id_e 实例 ID
+ */
 static void tx_task_entry(void *para)
 {
     MUS_Id_e id = (MUS_Id_e)(uint32_t)para;
-    uint8_t buf[MUS_STREAM_BUFF_SIZE];
+    uint8_t buf[MUS_TX_READ_SIZE];
 
     for (;;)
     {
-        size_t len = xStreamBufferReceive(s_instances[id].tx_stream, buf, sizeof(buf), portMAX_DELAY);
+        size_t len = xStreamBufferReceive(s_instances[id].tx_stream, buf, sizeof(buf), pdMS_TO_TICKS(10));
         if (len > 0)
         {
-            if (xSemaphoreTake(s_instances[id].tx_mutex, pdMS_TO_TICKS(2000)) == pdTRUE)
-            {
-                if (HAL_UART_Transmit_DMA(s_instances[id].config->huart, buf, (uint16_t)len) == HAL_OK)
-                {
-                    if (xSemaphoreTake(s_instances[id].tx_sem, pdMS_TO_TICKS(2000)) != pdTRUE)
-                    {
-                        HAL_UART_AbortTransmit(s_instances[id].config->huart);
-                    }
-                }
-                xSemaphoreGive(s_instances[id].tx_mutex);
-            }
+            mus_tx_data(id, buf, (uint16_t)len);
         }
     }
 }
 
 /* ========== 单实例初始化 ========== */
 
+/**
+ * @brief 初始化单个 UART 实例
+ * @param id 实例 ID
+ * @return 1=成功，0=失败
+ */
 static uint8_t init_instance(MUS_Id_e id)
 {
     MUS_Instance_t *inst = &s_instances[id];
     inst->config = &mus_hw_table[id];
 
-    /* 错误回调始终注册 */
     if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_ERROR_CB_ID, uart_error_callback) != HAL_OK)
     {
         return 0;
     }
 
-    /* RX 初始化 */
     if (inst->config->enable_rx)
     {
         if (HAL_UART_RegisterRxEventCallback(inst->config->huart, rx_event_callback) != HAL_OK)
@@ -237,10 +228,7 @@ static uint8_t init_instance(MUS_Id_e id)
             return 0;
         }
 
-        /* 静态创建永不失败，无需判空 */
-        uint16_t stream_size = inst->config->stream_buff_size;
-        inst->rx_stream = xStreamBufferCreateStatic(stream_size, 1, inst->rx_stream_buf, &inst->rx_stream_cb);
-
+        inst->rx_stream = xStreamBufferCreateStatic(MUS_STREAM_BUFF_SIZE, 1, inst->rx_stream_buf, &inst->rx_stream_cb);
         open_rx_idle(inst);
 
         snprintf(rx_task_name[id], configMAX_TASK_NAME_LEN, "mus%u_rx", (unsigned)id);
@@ -248,7 +236,6 @@ static uint8_t init_instance(MUS_Id_e id)
                           MUS_RX_TASK_PRIORITY, rx_task_stack[id], &rx_task_tcb[id]);
     }
 
-    /* TX 初始化 */
     if (inst->config->enable_tx)
     {
         if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_TX_COMPLETE_CB_ID, tx_cplt_callback) != HAL_OK)
@@ -256,11 +243,8 @@ static uint8_t init_instance(MUS_Id_e id)
             return 0;
         }
 
-        /* 静态创建永不失败，无需判空 */
-        uint16_t stream_size = inst->config->stream_buff_size;
-        inst->tx_stream = xStreamBufferCreateStatic(stream_size, 1, inst->tx_stream_buf, &inst->tx_stream_cb);
+        inst->tx_stream = xStreamBufferCreateStatic(MUS_STREAM_BUFF_SIZE, 1, inst->tx_stream_buf, &inst->tx_stream_cb);
         inst->tx_sem = xSemaphoreCreateBinaryStatic(&inst->tx_sem_cb);
-        inst->tx_mutex = xSemaphoreCreateMutexStatic(&inst->tx_mutex_cb);
 
         snprintf(tx_task_name[id], configMAX_TASK_NAME_LEN, "mus%u_tx", (unsigned)id);
         xTaskCreateStatic(tx_task_entry, tx_task_name[id], MUS_TASK_STACK_SIZE, (void *)(uint32_t)id,
@@ -280,44 +264,6 @@ void MUS_Init(void)
     }
 }
 
-void MUS_TxData(MUS_Id_e id, const uint8_t *data, uint16_t len)
-{
-    if (id >= MUS_COUNT || s_instances[id].config == NULL)
-    {
-        return;
-    }
-    if (!s_instances[id].config->enable_tx)
-    {
-        return;
-    }
-    if (s_instances[id].tx_mutex == NULL || s_instances[id].tx_sem == NULL)
-    {
-        return;
-    }
-    if (xPortIsInsideInterrupt())
-    {
-        return;
-    }
-
-    if (xSemaphoreTake(s_instances[id].tx_mutex, pdMS_TO_TICKS(2000)) != pdTRUE)
-    {
-        return;
-    }
-
-    if (HAL_UART_Transmit_DMA(s_instances[id].config->huart, data, len) != HAL_OK)
-    {
-        xSemaphoreGive(s_instances[id].tx_mutex);
-        return;
-    }
-
-    if (xSemaphoreTake(s_instances[id].tx_sem, pdMS_TO_TICKS(2000)) != pdTRUE)
-    {
-        HAL_UART_AbortTransmit(s_instances[id].config->huart);
-    }
-
-    xSemaphoreGive(s_instances[id].tx_mutex);
-}
-
 void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len)
 {
     if (id >= MUS_COUNT || s_instances[id].config == NULL)
@@ -328,7 +274,7 @@ void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len)
     {
         return;
     }
-    if (pData == NULL || s_instances[id].tx_stream == NULL || len >= s_instances[id].config->stream_buff_size)
+    if (pData == NULL || s_instances[id].tx_stream == NULL || len >= MUS_STREAM_BUFF_SIZE)
     {
         return;
     }
@@ -341,6 +287,7 @@ void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len)
     }
     else
     {
+        vTaskDelay(pdMS_TO_TICKS(MUS_TX_DELAY_MS));
         xStreamBufferSend(s_instances[id].tx_stream, (void *)pData, len, 0);
     }
 }
@@ -363,9 +310,8 @@ size_t MUS_RxStreamRead(MUS_Id_e id, void *pvRxData, size_t xBufferLengthBytes)
     return xStreamBufferReceive(s_instances[id].rx_stream, pvRxData, xBufferLengthBytes, 0);
 }
 
-__weak void MUS_RxCallback(MUS_Id_e id, const uint8_t *data, size_t len)
+__weak void MUS_ParseByte(MUS_Id_e id, uint8_t byte)
 {
     UNUSED(id);
-    UNUSED(data);
-    UNUSED(len);
+    UNUSED(byte);
 }

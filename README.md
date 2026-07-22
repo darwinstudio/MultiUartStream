@@ -49,6 +49,8 @@ typedef enum {
 // #define MUS_TASK_STACK_SIZE  256
 // #define MUS_RX_TASK_PRIORITY 4
 // #define MUS_TX_TASK_PRIORITY 3
+// #define MUS_TX_READ_SIZE     256
+// #define MUS_TX_DELAY_MS      50
 
 #endif
 ```
@@ -66,15 +68,11 @@ typedef enum {
 const MUS_HwConfig_t mus_hw_table[MUS_COUNT] = {
     [MUS_ID_HOST] = {
         .huart = &huart3,
-        .rx_buff_size = 32,
-        .stream_buff_size = 128,
         .enable_rx = 1,
         .enable_tx = 1,
     },
     [MUS_ID_SUBCOM] = {
         .huart = &huart2,
-        .rx_buff_size = 128,
-        .stream_buff_size = 256,
         .enable_rx = 1,
         .enable_tx = 1,
     },
@@ -101,18 +99,15 @@ ${CMAKE_CURRENT_SOURCE_DIR}/../../Middlewares/Third_Party/MultiUartStream
 // 系统启动时
 MUS_Init();
 
-// 发送数据（阻塞 DMA，互斥锁保护）
-MUS_TxData(MUS_ID_HOST, data, len);
-
-// 写入发送流（异步，由内部 TX 任务发送）
+// 写入发送流（异步，由内部 TX 任务通过 DMA 发送）
 MUS_PutDataToTxStream(MUS_ID_HOST, frame, frame_len);
 
-// 强覆盖接收回调
-void MUS_RxCallback(MUS_Id_e id, const uint8_t *data, size_t len) {
+// 强覆盖字节解析回调（逐字节调用，适用于状态机解析）
+void MUS_ParseByte(MUS_Id_e id, uint8_t byte) {
     if (id == MUS_ID_HOST) {
-        // 解析上位机协议帧
+        // 状态机解析上位机协议帧
     } else if (id == MUS_ID_SUBCOM) {
-        // 处理子板数据
+        // 状态机处理子板数据
     }
 }
 ```
@@ -133,8 +128,6 @@ const MUS_HwConfig_t mus_hw_table[MUS_COUNT] = {
     // ...
     [MUS_ID_LOG] = {
         .huart = &huart4,
-        .rx_buff_size = 0,       // RX 禁用时可填 0
-        .stream_buff_size = 512,
         .enable_rx = 0,          // 不创建 RX 资源
         .enable_tx = 1,
     },
@@ -149,10 +142,9 @@ MUS_PutDataToTxStream(MUS_ID_LOG, (uint8_t *)"Hello\n", 6);
 | 函数 | 说明 |
 |------|------|
 | `MUS_Init()` | 初始化所有实例（回调注册、流缓冲区、收发任务） |
-| `MUS_TxData(id, data, len)` | 阻塞式 DMA 发送（互斥锁保护） |
 | `MUS_PutDataToTxStream(id, pData, len)` | 写入发送流（支持中断上下文） |
 | `MUS_RxStreamRead(id, pvRxData, len)` | 从接收流读取（非阻塞） |
-| `MUS_RxCallback(id, data, len)` | `__weak` 接收回调 |
+| `MUS_ParseByte(id, byte)` | `__weak` 字节解析回调 |
 
 ## 架构说明
 

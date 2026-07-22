@@ -10,20 +10,16 @@
 #include "task.h"
 #include <stdio.h>
 
-/* ========== 内部实例结构体 ========== */
-
 /** @brief 每个 UART 实例的运行时状态 */
 typedef struct
 {
     const MUS_HwConfig_t *config; /**< 指向硬件配置表条目 */
 
-    /* RX 相关（enable_rx=1 时有效） */
     StreamBufferHandle_t rx_stream;            /**< 接收流缓冲区句柄 */
     StaticStreamBuffer_t rx_stream_cb;         /**< 接收流缓冲区控制块 */
     uint8_t rx_stream_buf[MUS_STREAM_BUFF_SIZE + 1]; /**< 接收流缓冲区 */
     uint8_t rx_dma_buf[MUS_RX_BUFFER_SIZE];    /**< DMA 接收缓冲区 */
 
-    /* TX 相关（enable_tx=1 时有效） */
     StreamBufferHandle_t tx_stream;            /**< 发送流缓冲区句柄 */
     StaticStreamBuffer_t tx_stream_cb;         /**< 发送流缓冲区控制块 */
     uint8_t tx_stream_buf[MUS_STREAM_BUFF_SIZE + 1]; /**< 发送流缓冲区 */
@@ -33,16 +29,12 @@ typedef struct
 
 static MUS_Instance_t s_instances[MUS_COUNT];
 
-/* ========== 任务静态分配 ========== */
-
 static StackType_t rx_task_stack[MUS_COUNT][MUS_TASK_STACK_SIZE];
 static StaticTask_t rx_task_tcb[MUS_COUNT];
 static StackType_t tx_task_stack[MUS_COUNT][MUS_TASK_STACK_SIZE];
 static StaticTask_t tx_task_tcb[MUS_COUNT];
 static char rx_task_name[MUS_COUNT][configMAX_TASK_NAME_LEN];
 static char tx_task_name[MUS_COUNT][configMAX_TASK_NAME_LEN];
-
-/* ========== 内部辅助函数 ========== */
 
 /**
  * @brief 启动 DMA + IDLE 检测接收
@@ -71,7 +63,7 @@ static void open_rx_idle(MUS_Instance_t *inst)
 
 /**
  * @brief 内部 DMA 发送（由 TX 任务调用）
- * @param id  实例 ID
+ * @param id   实例 ID
  * @param data 待发送数据
  * @param len  数据长度
  */
@@ -85,8 +77,6 @@ static void mus_tx_data(MUS_Id_e id, const uint8_t *data, uint16_t len)
         }
     }
 }
-
-/* ========== HAL 回调 ========== */
 
 /**
  * @brief DMA 接收完成回调（IDLE 检测触发）
@@ -165,8 +155,6 @@ static void uart_error_callback(UART_HandleTypeDef *huart)
     }
 }
 
-/* ========== 任务入口 ========== */
-
 /**
  * @brief RX 任务入口（逐字节接收并调用解析回调）
  * @param para 任务参数，转换为 MUS_Id_e 实例 ID
@@ -203,8 +191,6 @@ static void tx_task_entry(void *para)
         }
     }
 }
-
-/* ========== 单实例初始化 ========== */
 
 /**
  * @brief 初始化单个 UART 实例
@@ -254,8 +240,10 @@ static uint8_t init_instance(MUS_Id_e id)
     return 1;
 }
 
-/* ========== 公共 API 实现 ========== */
-
+/**
+ * @brief 初始化所有 UART 实例
+ * @see mus_hw_table
+ */
 void MUS_Init(void)
 {
     for (MUS_Id_e id = 0; id < MUS_COUNT; id++)
@@ -264,6 +252,12 @@ void MUS_Init(void)
     }
 }
 
+/**
+ * @brief 向发送流中写入数据（支持中断/任务上下文）
+ * @param id    实例 ID
+ * @param pData 待写入数据
+ * @param len   数据长度
+ */
 void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len)
 {
     if (id >= MUS_COUNT || s_instances[id].config == NULL)
@@ -292,6 +286,13 @@ void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len)
     }
 }
 
+/**
+ * @brief 从接收流中读取数据（非阻塞，仅任务上下文）
+ * @param id                 实例 ID
+ * @param pvRxData           读取目标缓冲区
+ * @param xBufferLengthBytes 最大读取字节数
+ * @return 实际读取的字节数
+ */
 size_t MUS_RxStreamRead(MUS_Id_e id, void *pvRxData, size_t xBufferLengthBytes)
 {
     if (id >= MUS_COUNT || s_instances[id].config == NULL)
@@ -310,6 +311,11 @@ size_t MUS_RxStreamRead(MUS_Id_e id, void *pvRxData, size_t xBufferLengthBytes)
     return xStreamBufferReceive(s_instances[id].rx_stream, pvRxData, xBufferLengthBytes, 0);
 }
 
+/**
+ * @brief 字节解析回调（__weak，宿主项目强覆盖以实现协议解析）
+ * @param id   数据来源的实例 ID
+ * @param byte 接收到的单个字节
+ */
 __weak void MUS_ParseByte(MUS_Id_e id, uint8_t byte)
 {
     UNUSED(id);

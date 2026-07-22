@@ -13,8 +13,6 @@
 #ifndef __MULTI_UART_STREAM_CONFIG_H_
 #define __MULTI_UART_STREAM_CONFIG_H_
 
-/* ========== 必须定义 ========== */
-
 /** @brief UART 实例数量 */
 #ifndef MUS_COUNT
 #define MUS_COUNT 2
@@ -35,7 +33,8 @@
  * @endcode
  */
 
-/* ========== 可选覆盖（默认值在 multi_uart_stream.h 中定义） ========== */
+/** @name 可选覆盖（默认值在 multi_uart_stream.h 中定义） */
+/** @{ */
 
 // #define MUS_RX_BUFFER_SIZE   256  ///< DMA 接收缓冲区大小（字节），默认 256
 // #define MUS_STREAM_BUFF_SIZE 256  ///< 收发流缓冲区大小（字节），默认 256
@@ -44,5 +43,7 @@
 // #define MUS_TX_TASK_PRIORITY 3    ///< 发送任务优先级，默认 3
 // #define MUS_TX_READ_SIZE     256  ///< TX 任务单次读取缓冲区大小（字节），默认 256
 // #define MUS_TX_DELAY_MS      50   ///< 写入发送流前的延时（ms），防止帧粘连，默认 50
+
+/** @} */
 
 #endif /* __MULTI_UART_STREAM_CONFIG_H_ */

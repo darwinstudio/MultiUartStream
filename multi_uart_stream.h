@@ -22,7 +22,8 @@
 #include "stream_buffer.h"
 #include "usart.h"
 
-/* ========== 默认配置（宿主项目可在 multi_uart_stream_config.h 中覆盖） ========== */
+/** @name 默认配置（宿主项目可在 multi_uart_stream_config.h 中覆盖） */
+/** @{ */
 
 #ifndef MUS_RX_BUFFER_SIZE
 #define MUS_RX_BUFFER_SIZE 256 /**< DMA 接收缓冲区大小（字节） */
@@ -52,7 +53,7 @@
 #define MUS_TX_DELAY_MS 50 /**< 写入发送流前的延时（ms），防止帧粘连 */
 #endif
 
-/* ========== 类型定义 ========== */
+/** @} */
 
 /**
  * @brief 硬件配置结构体
@@ -66,12 +67,8 @@ typedef struct
     uint8_t enable_tx;         /**< 1=启用发送（TX 流+TX 任务） */
 } MUS_HwConfig_t;
 
-/* ========== 外部配置表（宿主项目定义） ========== */
-
 /** @brief 硬件配置表，宿主项目必须定义，大小为 MUS_COUNT */
 extern const MUS_HwConfig_t mus_hw_table[MUS_COUNT];
-
-/* ========== 公共 API ========== */
 
 /**
  * @brief 初始化所有 UART 实例

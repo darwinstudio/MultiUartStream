@@ -42,11 +42,11 @@
 #endif
 
 #ifndef MUS_RX_TASK_PRIORITY
-#define MUS_RX_TASK_PRIORITY 4 /**< 接收任务优先级 */
+#define MUS_RX_TASK_PRIORITY 3 /**< 接收任务优先级 */
 #endif
 
 #ifndef MUS_TX_TASK_PRIORITY
-#define MUS_TX_TASK_PRIORITY 3 /**< 发送任务优先级 */
+#define MUS_TX_TASK_PRIORITY 4 /**< 发送任务优先级 */
 #endif
 
 #ifndef MUS_TX_READ_SIZE

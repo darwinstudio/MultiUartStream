@@ -36,14 +36,14 @@
 /** @name 可选覆盖（默认值在 multi_uart_stream.h 中定义） */
 /** @{ */
 
-// #define MUS_RX_BUFFER_SIZE   256  ///< DMA 接收缓冲区大小（字节），默认 256
-// #define MUS_STREAM_BUFF_SIZE 256  ///< 收发流缓冲区大小（字节），默认 256
-// #define MUS_RX_TASK_STACK_SIZE 128  ///< RX 任务栈大小（word），默认 128
-// #define MUS_TX_TASK_STACK_SIZE 256  ///< TX 任务栈大小（word），默认 256
-// #define MUS_RX_TASK_PRIORITY 4    ///< 接收任务优先级，默认 4
-// #define MUS_TX_TASK_PRIORITY 3    ///< 发送任务优先级，默认 3
-// #define MUS_TX_READ_SIZE     256  ///< TX 任务单次读取缓冲区大小（字节），默认 256
-// #define MUS_TX_DELAY_MS      50   ///< 写入发送流前的延时（ms），防止帧粘连，默认 50
+// #define MUS_RX_BUFFER_SIZE      ///< DMA 接收缓冲区大小（字节）
+// #define MUS_STREAM_BUFF_SIZE    ///< 收发流缓冲区大小（字节）
+// #define MUS_RX_TASK_STACK_SIZE  ///< RX 任务栈大小（word）
+// #define MUS_TX_TASK_STACK_SIZE  ///< TX 任务栈大小（word）
+// #define MUS_RX_TASK_PRIORITY    ///< 接收任务优先级
+// #define MUS_TX_TASK_PRIORITY    ///< 发送任务优先级
+// #define MUS_TX_READ_SIZE        ///< TX 任务单次读取缓冲区大小（字节）
+// #define MUS_TX_DELAY_MS         ///< 写入发送流前的延时（ms），防止帧粘连
 
 /** @} */
 

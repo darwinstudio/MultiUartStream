@@ -36,9 +36,9 @@
 /* ========== 可选覆盖（默认值在 multi_uart_stream.h 中定义） ========== */
 
 // #define MUS_RX_BUFFER_SIZE   256  // DMA 接收缓冲区大小（字节），默认 256
-                                     // 须 >= mus_hw_table[] 中最大的 rx_buff_size
+// 须 >= mus_hw_table[] 中最大的 rx_buff_size
 // #define MUS_STREAM_BUFF_SIZE 256  // 流缓冲区大小（字节），默认 256
-                                     // 须 >= mus_hw_table[] 中最大的 stream_buff_size
+// 须 >= mus_hw_table[] 中最大的 stream_buff_size
 // #define MUS_TASK_STACK_SIZE  256  // 收发任务栈大小（word），默认 256
 // #define MUS_RX_TASK_PRIORITY 4   // 接收任务优先级，默认 4
 // #define MUS_TX_TASK_PRIORITY 3   // 发送任务优先级，默认 3

@@ -164,7 +164,7 @@ MUS_PutDataToTxStream(MUS_ID_LOG, (uint8_t *)"Hello\n", 6);
 └─────────────┬───────────────────────┬───────────────┘
               │                       │
     ┌─────────▼─────────┐   ┌────────▼────────┐
-    │   RX Task (10ms)   │   │  TX Task (10ms)  │
+    │  RX Task (blocked) │   │ TX Task (blocked) │
     │ StreamBuffer → CB  │   │ StreamBuffer→DMA │
     └─────────┬─────────┘   └────────┬────────┘
               │                       │

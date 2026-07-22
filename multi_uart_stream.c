@@ -87,8 +87,7 @@ static void open_rx_idle(MUS_Instance_t *inst)
         HAL_UART_AbortReceive(huart);
     }
 
-    HAL_StatusTypeDef status =
-        HAL_UARTEx_ReceiveToIdle_DMA(huart, inst->rx_dma_buf, inst->config->rx_buff_size);
+    HAL_StatusTypeDef status = HAL_UARTEx_ReceiveToIdle_DMA(huart, inst->rx_dma_buf, inst->config->rx_buff_size);
     if (status != HAL_OK)
     {
         HAL_UART_AbortReceive(huart);
@@ -156,6 +155,13 @@ static void uart_error_callback(UART_HandleTypeDef *huart)
     {
         if (s_instances[i].config != NULL && s_instances[i].config->huart == huart)
         {
+            if (s_instances[i].config->enable_tx && s_instances[i].tx_sem != NULL)
+            {
+                HAL_UART_AbortTransmit(huart);
+                BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+                xSemaphoreGiveFromISR(s_instances[i].tx_sem, &xHigherPriorityTaskWoken);
+                portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+            }
             if (s_instances[i].config->enable_rx)
             {
                 HAL_UART_AbortReceive(huart);
@@ -175,7 +181,7 @@ static void rx_task_entry(void *para)
 
     for (;;)
     {
-        size_t len = xStreamBufferReceive(s_instances[id].rx_stream, buf, sizeof(buf), pdMS_TO_TICKS(10));
+        size_t len = xStreamBufferReceive(s_instances[id].rx_stream, buf, sizeof(buf), portMAX_DELAY);
         if (len > 0)
         {
             MUS_RxCallback(id, buf, len);
@@ -192,7 +198,7 @@ static void tx_task_entry(void *para)
 
     for (;;)
     {
-        size_t len = xStreamBufferReceive(s_instances[id].tx_stream, buf, sizeof(buf), pdMS_TO_TICKS(10));
+        size_t len = xStreamBufferReceive(s_instances[id].tx_stream, buf, sizeof(buf), portMAX_DELAY);
         if (len > 0)
         {
             if (xSemaphoreTake(s_instances[id].tx_mutex, pdMS_TO_TICKS(2000)) == pdTRUE)
@@ -217,11 +223,7 @@ static uint8_t init_instance(MUS_Id_e id)
     MUS_Instance_t *inst = &s_instances[id];
     inst->config = &mus_hw_table[id];
 
-    /* 注册 HAL 回调（TX 完成 + 错误始终注册，RX 事件仅在启用时注册） */
-    if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_TX_COMPLETE_CB_ID, tx_cplt_callback) != HAL_OK)
-    {
-        return 0;
-    }
+    /* 错误回调始终注册 */
     if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_ERROR_CB_ID, uart_error_callback) != HAL_OK)
     {
         return 0;
@@ -249,6 +251,11 @@ static uint8_t init_instance(MUS_Id_e id)
     /* TX 初始化 */
     if (inst->config->enable_tx)
     {
+        if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_TX_COMPLETE_CB_ID, tx_cplt_callback) != HAL_OK)
+        {
+            return 0;
+        }
+
         /* 静态创建永不失败，无需判空 */
         uint16_t stream_size = inst->config->stream_buff_size;
         inst->tx_stream = xStreamBufferCreateStatic(stream_size, 1, inst->tx_stream_buf, &inst->tx_stream_cb);

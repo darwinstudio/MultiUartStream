@@ -8,8 +8,8 @@
 - TX/RX 独立可配置（如日志串口仅 TX、调试串口仅 RX）
 - 通过配置表抽象硬件，零直接硬件引用
 - 静态内存分配（无 malloc）
-- `__weak` 接收回调，方便宿主项目处理协议解析
-- 支持多实例并发，互斥锁保护 DMA 发送
+- `__weak` 字节解析回调，方便宿主项目实现状态机协议解析
+- 支持多实例并发
 
 ## 文件结构
 
@@ -43,15 +43,15 @@ typedef enum {
     MUS_ID_NUMS,
 } MUS_Id_e;
 
-// 可选覆盖
-// #define MUS_RX_BUFFER_SIZE   256
-// #define MUS_STREAM_BUFF_SIZE 256
-// #define MUS_RX_TASK_STACK_SIZE 128
-// #define MUS_TX_TASK_STACK_SIZE 256
-// #define MUS_RX_TASK_PRIORITY 4
-// #define MUS_TX_TASK_PRIORITY 3
-// #define MUS_TX_READ_SIZE     256
-// #define MUS_TX_DELAY_MS      50
+// 可选覆盖默认值，参见 multi_uart_stream.h 中的宏定义
+// #define MUS_RX_BUFFER_SIZE      256
+// #define MUS_STREAM_BUFF_SIZE    512
+// #define MUS_RX_TASK_STACK_SIZE  128
+// #define MUS_TX_TASK_STACK_SIZE  256
+// #define MUS_RX_TASK_PRIORITY    3
+// #define MUS_TX_TASK_PRIORITY    4
+// #define MUS_TX_READ_SIZE        256
+// #define MUS_TX_DELAY_MS         50
 
 #endif
 ```
@@ -149,27 +149,36 @@ MUS_PutDataToTxStream(MUS_ID_LOG, (uint8_t *)"Hello\n", 6);
 
 ## 架构说明
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  宿主项目 (App 层)                    │
-│  MUS_RxCallback() ← 处理接收到的数据                   │
-│  MUS_PutDataToTxStream() → 写入待发送数据              │
-└─────────────┬───────────────────────┬───────────────┘
-              │                       │
-    ┌─────────▼─────────┐   ┌────────▼────────┐
-    │  RX Task (blocked) │   │ TX Task (blocked) │
-    │ StreamBuffer → CB  │   │ StreamBuffer→DMA │
-    └─────────┬─────────┘   └────────┬────────┘
-              │                       │
-    ┌─────────▼─────────┐   ┌────────▼────────┐
-    │  DMA + IDLE 检测    │   │   DMA 发送      │
-    │  (HAL 回调)        │   │  (HAL 回调)      │
-    └─────────┬─────────┘   └────────┬────────┘
-              │                       │
-              └───────┬───────────────┘
-                      │
-              ┌───────▼───────┐
-              │  UART 硬件     │
-              │ (huart2/3/4)  │
-              └───────────────┘
+```mermaid
+graph TD
+    subgraph APP["宿主项目 (App 层)"]
+        PB["MUS_ParseByte()<br/>逐字节解析协议"]
+        PT["MUS_PutDataToTxStream()<br/>写入待发送数据"]
+    end
+
+    subgraph TASK["FreeRTOS 任务层"]
+        RX["RX Task (阻塞等待)<br/>StreamBuffer → 逐字节回调"]
+        TX["TX Task (阻塞等待)<br/>StreamBuffer → DMA 发送"]
+    end
+
+    subgraph HAL["HAL 回调层 (ISR)"]
+        RX_CB["rx_event_callback<br/>DMA + IDLE 检测"]
+        TX_CB["tx_cplt_callback<br/>DMA 发送完成"]
+        ERR["uart_error_callback<br/>错误恢复"]
+    end
+
+    subgraph HW["UART 硬件"]
+        UART["huart"]
+    end
+
+    UART -- "DMA + IDLE 中断" --> RX_CB
+    RX_CB -- "写入 StreamBuffer" --> RX
+    RX -- "调用" --> PB
+
+    PT -- "写入 StreamBuffer" --> TX
+    TX -- "DMA 发送" --> UART
+    TX_CB -- "释放信号量" --> TX
+
+    ERR -- "重启 RX DMA" --> UART
+    ERR -- "解阻塞 TX" --> TX
 ```

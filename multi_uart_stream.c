@@ -28,9 +28,9 @@ typedef struct
 
 static MUS_Instance_t s_instances[MUS_COUNT];
 
-static StackType_t rx_task_stack[MUS_COUNT][MUS_TASK_STACK_SIZE];
+static StackType_t rx_task_stack[MUS_COUNT][MUS_RX_TASK_STACK_SIZE];
 static StaticTask_t rx_task_tcb[MUS_COUNT];
-static StackType_t tx_task_stack[MUS_COUNT][MUS_TASK_STACK_SIZE];
+static StackType_t tx_task_stack[MUS_COUNT][MUS_TX_TASK_STACK_SIZE];
 static StaticTask_t tx_task_tcb[MUS_COUNT];
 
 /**
@@ -207,7 +207,7 @@ static void init_instance(MUS_Id_e id)
         inst->rx_stream = xStreamBufferCreateStatic(MUS_STREAM_BUFF_SIZE, 1, inst->rx_stream_buf, &inst->rx_stream_cb);
         open_rx_idle(inst);
 
-        xTaskCreateStatic(rx_task_entry, "mus_rx", MUS_TASK_STACK_SIZE, (void *)(uint32_t)id,
+        xTaskCreateStatic(rx_task_entry, "mus_rx", MUS_RX_TASK_STACK_SIZE, (void *)(uint32_t)id,
                           MUS_RX_TASK_PRIORITY, rx_task_stack[id], &rx_task_tcb[id]);
     }
 
@@ -218,7 +218,7 @@ static void init_instance(MUS_Id_e id)
         inst->tx_stream = xStreamBufferCreateStatic(MUS_STREAM_BUFF_SIZE, 1, inst->tx_stream_buf, &inst->tx_stream_cb);
         inst->tx_sem = xSemaphoreCreateBinaryStatic(&inst->tx_sem_cb);
 
-        xTaskCreateStatic(tx_task_entry, "mus_tx", MUS_TASK_STACK_SIZE, (void *)(uint32_t)id,
+        xTaskCreateStatic(tx_task_entry, "mus_tx", MUS_TX_TASK_STACK_SIZE, (void *)(uint32_t)id,
                           MUS_TX_TASK_PRIORITY, tx_task_stack[id], &tx_task_tcb[id]);
     }
 }

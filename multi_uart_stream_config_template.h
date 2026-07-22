@@ -38,7 +38,8 @@
 
 // #define MUS_RX_BUFFER_SIZE   256  ///< DMA 接收缓冲区大小（字节），默认 256
 // #define MUS_STREAM_BUFF_SIZE 256  ///< 收发流缓冲区大小（字节），默认 256
-// #define MUS_TASK_STACK_SIZE  256  ///< 收发任务栈大小（word），默认 256
+// #define MUS_RX_TASK_STACK_SIZE 128  ///< RX 任务栈大小（word），默认 128
+// #define MUS_TX_TASK_STACK_SIZE 256  ///< TX 任务栈大小（word），默认 256
 // #define MUS_RX_TASK_PRIORITY 4    ///< 接收任务优先级，默认 4
 // #define MUS_TX_TASK_PRIORITY 3    ///< 发送任务优先级，默认 3
 // #define MUS_TX_READ_SIZE     256  ///< TX 任务单次读取缓冲区大小（字节），默认 256

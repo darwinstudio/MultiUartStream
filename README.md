@@ -46,7 +46,8 @@ typedef enum {
 // 可选覆盖
 // #define MUS_RX_BUFFER_SIZE   256
 // #define MUS_STREAM_BUFF_SIZE 256
-// #define MUS_TASK_STACK_SIZE  256
+// #define MUS_RX_TASK_STACK_SIZE 128
+// #define MUS_TX_TASK_STACK_SIZE 256
 // #define MUS_RX_TASK_PRIORITY 4
 // #define MUS_TX_TASK_PRIORITY 3
 // #define MUS_TX_READ_SIZE     256

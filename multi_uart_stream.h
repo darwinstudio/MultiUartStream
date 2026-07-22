@@ -30,11 +30,15 @@
 #endif
 
 #ifndef MUS_STREAM_BUFF_SIZE
-#define MUS_STREAM_BUFF_SIZE 256 /**< 流缓冲区大小（字节），须 >= 最大单帧长度 */
+#define MUS_STREAM_BUFF_SIZE 512 /**< 流缓冲区大小（字节），须 >= 最大单帧长度 */
 #endif
 
-#ifndef MUS_TASK_STACK_SIZE
-#define MUS_TASK_STACK_SIZE 256 /**< 收发任务栈大小（word） */
+#ifndef MUS_RX_TASK_STACK_SIZE
+#define MUS_RX_TASK_STACK_SIZE 128 /**< RX 任务栈大小（word），单字节读取，栈需求较小 */
+#endif
+
+#ifndef MUS_TX_TASK_STACK_SIZE
+#define MUS_TX_TASK_STACK_SIZE 256 /**< TX 任务栈大小（word），缓冲区读取，栈需求较大 */
 #endif
 
 #ifndef MUS_RX_TASK_PRIORITY

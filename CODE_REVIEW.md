@@ -18,7 +18,7 @@
 ## 3. 资源生命周期
 
 - `init_instance` 中必须先注册 HAL 回调，再创建 StreamBuffer / 启动 DMA
-- `open_rx_idle` 中 DMA 启动失败时必须 `AbortReceive` 后重试一次
+- `open_rx_idle` 中 DMA 启动失败时必须 `AbortReceive` 后重试一次，重试后仍失败则直接返回
 - `open_rx_idle` 启动 DMA 后必须禁用半传输中断（`__HAL_DMA_DISABLE_IT(DMA_IT_HT)`），防止 IDLE 前误触发
 - 错误回调中 TX/RX 必须分别处理：TX 给信号量解阻塞，RX 重启接收
 - `enable_rx=0` 的实例不得注册 RX 回调、创建 RX 资源
@@ -35,6 +35,8 @@
 - `MUS_COUNT` 必须等于 `MUS_Id_e` 枚举的有效 ID 数量
 - `mus_hw_table[]` 大小必须为 `MUS_COUNT`，不多不少
 - `enable_rx` / `enable_tx` 只允许 0 或 1
+- `MUS_TX_READ_SIZE` 必须 <= `MUS_STREAM_BUFF_SIZE`（可加编译期检查）
+- `huart` 不得为 NULL
 
 ## 6. 静态分配
 

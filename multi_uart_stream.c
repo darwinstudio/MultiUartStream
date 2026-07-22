@@ -192,24 +192,17 @@ static void tx_task_entry(void *para)
 /**
  * @brief 初始化单个 UART 实例
  * @param id 实例 ID
- * @return 1=成功，0=失败
  */
-static uint8_t init_instance(MUS_Id_e id)
+static void init_instance(MUS_Id_e id)
 {
     MUS_Instance_t *inst = &s_instances[id];
     inst->config = &mus_hw_table[id];
 
-    if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_ERROR_CB_ID, uart_error_callback) != HAL_OK)
-    {
-        return 0;
-    }
+    HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_ERROR_CB_ID, uart_error_callback);
 
     if (inst->config->enable_rx)
     {
-        if (HAL_UART_RegisterRxEventCallback(inst->config->huart, rx_event_callback) != HAL_OK)
-        {
-            return 0;
-        }
+        HAL_UART_RegisterRxEventCallback(inst->config->huart, rx_event_callback);
 
         inst->rx_stream = xStreamBufferCreateStatic(MUS_STREAM_BUFF_SIZE, 1, inst->rx_stream_buf, &inst->rx_stream_cb);
         open_rx_idle(inst);
@@ -220,10 +213,7 @@ static uint8_t init_instance(MUS_Id_e id)
 
     if (inst->config->enable_tx)
     {
-        if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_TX_COMPLETE_CB_ID, tx_cplt_callback) != HAL_OK)
-        {
-            return 0;
-        }
+        HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_TX_COMPLETE_CB_ID, tx_cplt_callback);
 
         inst->tx_stream = xStreamBufferCreateStatic(MUS_STREAM_BUFF_SIZE, 1, inst->tx_stream_buf, &inst->tx_stream_cb);
         inst->tx_sem = xSemaphoreCreateBinaryStatic(&inst->tx_sem_cb);
@@ -231,8 +221,6 @@ static uint8_t init_instance(MUS_Id_e id)
         xTaskCreateStatic(tx_task_entry, "mus_tx", MUS_TASK_STACK_SIZE, (void *)(uint32_t)id,
                           MUS_TX_TASK_PRIORITY, tx_task_stack[id], &tx_task_tcb[id]);
     }
-
-    return 1;
 }
 
 /**
@@ -263,7 +251,7 @@ void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len)
     {
         return;
     }
-    if (pData == NULL || s_instances[id].tx_stream == NULL || len >= MUS_STREAM_BUFF_SIZE)
+    if (pData == NULL || len >= MUS_STREAM_BUFF_SIZE)
     {
         return;
     }
@@ -298,7 +286,7 @@ size_t MUS_RxStreamRead(MUS_Id_e id, void *pvRxData, size_t xBufferLengthBytes)
     {
         return 0;
     }
-    if (pvRxData == NULL || s_instances[id].rx_stream == NULL || xPortIsInsideInterrupt())
+    if (pvRxData == NULL || xPortIsInsideInterrupt())
     {
         return 0;
     }

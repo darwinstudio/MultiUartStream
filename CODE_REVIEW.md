@@ -27,15 +27,15 @@
 
 - 所有公共 API 首行必须校验 `id < MUS_COUNT && config != NULL`
 - 功能开关检查必须在资源检查之前（先查 `enable_tx`，再操作 `tx_stream`）
-- `MUS_RxStreamRead` 禁止在中断上下文调用（`xStreamBufferReceive` 非 ISR 版本）
 - `MUS_PutDataToTxStream` 任务上下文调用时必须延时 `MUS_TX_DELAY_MS` 以防止帧粘连
 
 ## 5. 配置表一致性
 
 - `MUS_COUNT` 必须等于 `MUS_Id_e` 枚举的有效 ID 数量
 - `mus_hw_table[]` 大小必须为 `MUS_COUNT`，不多不少
-- `enable_rx` / `enable_tx` 只允许 0 或 1
-- `MUS_TX_READ_SIZE` 必须 <= `MUS_STREAM_BUFF_SIZE`（可加编译期检查）
+- `enable_rx` / `enable_tx` / `use_bulk_rx` 只允许 0 或 1
+- `use_bulk_rx = 1` 仅在 `enable_rx = 1` 时有意义
+- `MUS_TX_READ_SIZE` / `MUS_RX_READ_SIZE` 必须 <= `MUS_STREAM_BUFF_SIZE`（可加编译期检查）
 - `huart` 不得为 NULL
 
 ## 6. 静态分配
@@ -50,7 +50,7 @@
 - `static` 函数命名全小写（`open_rx_idle`、`mus_tx_data`、`init_instance`）
 - 所有函数必须有 Doxygen `@brief` / `@param` / `@return` 注释
 - 不得引入 `stdio.h` 等重型标准库
-- `MUS_ParseByte` 为 `__weak`，宿主项目必须强覆盖实现协议解析逻辑
+- `MUS_ParseByte` / `MUS_ParseData` 为 `__weak`，宿主项目按 `use_bulk_rx` 配置强覆盖对应回调
 
 ## 8. 可重入性
 

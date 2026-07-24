@@ -34,7 +34,7 @@
 #endif
 
 #ifndef MUS_RX_TASK_STACK_SIZE
-#define MUS_RX_TASK_STACK_SIZE 128 /**< RX 任务栈大小（word），单字节读取，栈需求较小 */
+#define MUS_RX_TASK_STACK_SIZE 256 /**< RX 任务栈大小（word），批量模式需容纳 MUS_RX_READ_SIZE 缓冲区；逐字节模式可覆盖为 128 节省内存 */
 #endif
 
 #ifndef MUS_TX_TASK_STACK_SIZE
@@ -53,6 +53,10 @@
 #define MUS_TX_READ_SIZE 256 /**< TX 任务单次读取缓冲区大小（字节） */
 #endif
 
+#ifndef MUS_RX_READ_SIZE
+#define MUS_RX_READ_SIZE 256 /**< RX 批量模式单次读取缓冲区大小（字节） */
+#endif
+
 #ifndef MUS_TX_DELAY_MS
 #define MUS_TX_DELAY_MS 50 /**< 写入发送流前的延时（ms），防止帧粘连 */
 #endif
@@ -69,6 +73,7 @@ typedef struct
     UART_HandleTypeDef *huart; /**< UART 句柄（CubeMX 生成） */
     uint8_t enable_rx;         /**< 1=启用接收（DMA+IDLE+RX 流+RX 任务） */
     uint8_t enable_tx;         /**< 1=启用发送（TX 流+TX 任务） */
+    uint8_t use_bulk_rx;       /**< 1=批量接收模式（调用 MUS_ParseData），0=逐字节模式（调用 MUS_ParseByte） */
 } MUS_HwConfig_t;
 
 /** @brief 硬件配置表，宿主项目必须定义，大小为 MUS_COUNT */
@@ -95,23 +100,26 @@ void MUS_Init(void);
 void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len);
 
 /**
- * @brief 从接收流中读取数据（非阻塞，仅任务上下文）
- * @param id                 实例 ID
- * @param pvRxData           读取目标缓冲区
- * @param xBufferLengthBytes 最大读取字节数
- * @return 实际读取的字节数
- */
-size_t MUS_RxStreamRead(MUS_Id_e id, void *pvRxData, size_t xBufferLengthBytes);
-
-/**
  * @brief 字节解析回调（__weak，宿主项目强覆盖以实现协议解析）
  *
  * 在 RX 任务上下文中逐字节调用，适用于状态机式协议解析。
- * 仅在 enable_rx=1 时生效。
+ * 仅在 enable_rx=1 且 use_bulk_rx=0 时生效。
  *
  * @param id   数据来源的实例 ID
  * @param byte 接收到的单个字节
  */
 void MUS_ParseByte(MUS_Id_e id, uint8_t byte);
+
+/**
+ * @brief 批量数据解析回调（__weak，宿主项目强覆盖以实现协议解析）
+ *
+ * 在 RX 任务上下文中一次性接收所有可用数据后调用，适用于整帧处理。
+ * 仅在 enable_rx=1 且 use_bulk_rx=1 时生效。
+ *
+ * @param id   数据来源的实例 ID
+ * @param data 接收到的数据指针
+ * @param len  数据长度（字节）
+ */
+void MUS_ParseData(MUS_Id_e id, const uint8_t *data, size_t len);
 
 #endif /* __MULTI_UART_STREAM_H_ */

@@ -153,19 +153,38 @@ static void uart_error_callback(UART_HandleTypeDef *huart)
 }
 
 /**
- * @brief RX 任务入口（逐字节接收并调用解析回调）
+ * @brief RX 任务入口（根据 use_bulk_rx 选择逐字节或批量接收）
  * @param para 任务参数，转换为 MUS_Id_e 实例 ID
  */
 static void rx_task_entry(void *para)
 {
     MUS_Id_e id = (MUS_Id_e)(uint32_t)para;
-    uint8_t byte;
 
-    for (;;)
+    if (s_instances[id].config->use_bulk_rx)
     {
-        if (xStreamBufferReceive(s_instances[id].rx_stream, &byte, 1, portMAX_DELAY) == 1)
+        /* 批量接收模式：一次性读取所有可用数据 */
+        uint8_t buf[MUS_RX_READ_SIZE];
+
+        for (;;)
         {
-            MUS_ParseByte(id, byte);
+            size_t len = xStreamBufferReceive(s_instances[id].rx_stream, buf, sizeof(buf), pdMS_TO_TICKS(10));
+            if (len > 0)
+            {
+                MUS_ParseData(id, buf, len);
+            }
+        }
+    }
+    else
+    {
+        /* 逐字节接收模式 */
+        uint8_t byte;
+
+        for (;;)
+        {
+            if (xStreamBufferReceive(s_instances[id].rx_stream, &byte, 1, portMAX_DELAY) == 1)
+            {
+                MUS_ParseByte(id, byte);
+            }
         }
     }
 }
@@ -270,31 +289,6 @@ void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len)
 }
 
 /**
- * @brief 从接收流中读取数据（非阻塞，仅任务上下文）
- * @param id                 实例 ID
- * @param pvRxData           读取目标缓冲区
- * @param xBufferLengthBytes 最大读取字节数
- * @return 实际读取的字节数
- */
-size_t MUS_RxStreamRead(MUS_Id_e id, void *pvRxData, size_t xBufferLengthBytes)
-{
-    if (id >= MUS_COUNT || s_instances[id].config == NULL)
-    {
-        return 0;
-    }
-    if (!s_instances[id].config->enable_rx)
-    {
-        return 0;
-    }
-    if (pvRxData == NULL || xPortIsInsideInterrupt())
-    {
-        return 0;
-    }
-
-    return xStreamBufferReceive(s_instances[id].rx_stream, pvRxData, xBufferLengthBytes, 0);
-}
-
-/**
  * @brief 字节解析回调（__weak，宿主项目强覆盖以实现协议解析）
  * @param id   数据来源的实例 ID
  * @param byte 接收到的单个字节
@@ -303,4 +297,17 @@ __weak void MUS_ParseByte(MUS_Id_e id, uint8_t byte)
 {
     UNUSED(id);
     UNUSED(byte);
+}
+
+/**
+ * @brief 批量数据解析回调（__weak，宿主项目强覆盖以实现协议解析）
+ * @param id   数据来源的实例 ID
+ * @param data 接收到的数据指针
+ * @param len  数据长度（字节）
+ */
+__weak void MUS_ParseData(MUS_Id_e id, const uint8_t *data, size_t len)
+{
+    UNUSED(id);
+    UNUSED(data);
+    UNUSED(len);
 }

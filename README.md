@@ -8,7 +8,7 @@
 - TX/RX 独立可配置（如日志串口仅 TX、调试串口仅 RX）
 - 通过配置表抽象硬件，零直接硬件引用
 - 静态内存分配（无 malloc）
-- `__weak` 字节解析回调，方便宿主项目实现状态机协议解析
+- `__weak` 字节/批量解析回调，支持逐字节状态机和整帧处理两种模式
 - 支持多实例并发
 
 ## 文件结构
@@ -51,6 +51,7 @@ typedef enum {
 // #define MUS_RX_TASK_PRIORITY    3
 // #define MUS_TX_TASK_PRIORITY    4
 // #define MUS_TX_READ_SIZE        256
+// #define MUS_RX_READ_SIZE        256
 // #define MUS_TX_DELAY_MS         50
 
 #endif
@@ -71,11 +72,13 @@ const MUS_HwConfig_t mus_hw_table[MUS_COUNT] = {
         .huart = &huart3,
         .enable_rx = 1,
         .enable_tx = 1,
+        .use_bulk_rx = 0,   // 逐字节模式，调用 MUS_ParseByte
     },
     [MUS_ID_SUBCOM] = {
         .huart = &huart2,
         .enable_rx = 1,
         .enable_tx = 1,
+        .use_bulk_rx = 1,   // 批量模式，调用 MUS_ParseData
     },
 };
 ```
@@ -103,12 +106,17 @@ MUS_Init();
 // 写入发送流（异步，由内部 TX 任务通过 DMA 发送）
 MUS_PutDataToTxStream(MUS_ID_HOST, frame, frame_len);
 
-// 强覆盖字节解析回调（逐字节调用，适用于状态机解析）
+// 强覆盖字节解析回调（逐字节调用，适用于状态机解析，use_bulk_rx=0 时生效）
 void MUS_ParseByte(MUS_Id_e id, uint8_t byte) {
     if (id == MUS_ID_HOST) {
         // 状态机解析上位机协议帧
-    } else if (id == MUS_ID_SUBCOM) {
-        // 状态机处理子板数据
+    }
+}
+
+// 强覆盖批量解析回调（整帧处理，use_bulk_rx=1 时生效）
+void MUS_ParseData(MUS_Id_e id, const uint8_t *data, size_t len) {
+    if (id == MUS_ID_SUBCOM) {
+        // 整帧处理子板数据
     }
 }
 ```
@@ -144,8 +152,8 @@ MUS_PutDataToTxStream(MUS_ID_LOG, (uint8_t *)"Hello\n", 6);
 |------|------|
 | `MUS_Init()` | 初始化所有实例（回调注册、流缓冲区、收发任务） |
 | `MUS_PutDataToTxStream(id, pData, len)` | 写入发送流（支持中断上下文） |
-| `MUS_RxStreamRead(id, pvRxData, len)` | 从接收流读取（非阻塞） |
-| `MUS_ParseByte(id, byte)` | `__weak` 字节解析回调 |
+| `MUS_ParseByte(id, byte)` | `__weak` 字节解析回调（逐字节模式） |
+| `MUS_ParseData(id, data, len)` | `__weak` 批量数据解析回调（批量模式） |
 
 ## 架构说明
 
@@ -153,11 +161,12 @@ MUS_PutDataToTxStream(MUS_ID_LOG, (uint8_t *)"Hello\n", 6);
 graph TD
     subgraph APP["宿主项目 (App 层)"]
         PB["MUS_ParseByte()<br/>逐字节解析协议"]
+        PD["MUS_ParseData()<br/>批量数据解析"]
         PT["MUS_PutDataToTxStream()<br/>写入待发送数据"]
     end
 
     subgraph TASK["FreeRTOS 任务层"]
-        RX["RX Task (阻塞等待)<br/>StreamBuffer → 逐字节回调"]
+        RX["RX Task<br/>use_bulk_rx=0: 逐字节回调<br/>use_bulk_rx=1: 批量回调"]
         TX["TX Task (阻塞等待)<br/>StreamBuffer → DMA 发送"]
     end
 
@@ -173,7 +182,8 @@ graph TD
 
     UART -- "DMA + IDLE 中断" --> RX_CB
     RX_CB -- "写入 StreamBuffer" --> RX
-    RX -- "调用" --> PB
+    RX -- "use_bulk_rx=0" --> PB
+    RX -- "use_bulk_rx=1" --> PD
 
     PT -- "写入 StreamBuffer" --> TX
     TX -- "DMA 发送" --> UART

@@ -43,6 +43,7 @@
 // #define MUS_RX_TASK_PRIORITY    ///< 接收任务优先级
 // #define MUS_TX_TASK_PRIORITY    ///< 发送任务优先级
 // #define MUS_TX_READ_SIZE        ///< TX 任务单次读取缓冲区大小（字节）
+// #define MUS_RX_READ_SIZE        ///< RX 批量模式单次读取缓冲区大小（字节）
 // #define MUS_TX_DELAY_MS         ///< 写入发送流前的延时（ms），防止帧粘连
 
 /** @} */

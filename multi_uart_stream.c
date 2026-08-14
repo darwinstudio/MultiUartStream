@@ -190,25 +190,16 @@ static void init_instance(MUS_Id_e id) {
     inst->config         = &mus_hw_table[id];
 
     if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_ERROR_CB_ID, uart_error_callback) != HAL_OK) {
-#ifdef MUS_USE_EASYLOGGER
-        log_e("MUS %d ERROR_CB register failed", id);
-#endif
         return;
     }
 
     if (inst->config->enable_rx) {
         if (HAL_UART_RegisterRxEventCallback(inst->config->huart, rx_event_callback) != HAL_OK) {
-#ifdef MUS_USE_EASYLOGGER
-            log_e("MUS %d RxEvent register failed", id);
-#endif
             return;
         }
 
         inst->rx_stream = xStreamBufferCreateStatic(MUS_STREAM_BUFF_SIZE, 1, inst->rx_stream_buf, &inst->rx_stream_cb);
         if (inst->rx_stream == NULL) {
-#ifdef MUS_USE_EASYLOGGER
-            log_e("MUS %d rx_stream create failed", id);
-#endif
             return;
         }
         open_rx_idle(inst);
@@ -216,44 +207,27 @@ static void init_instance(MUS_Id_e id) {
         TaskHandle_t rx_task = xTaskCreateStatic(rx_task_entry, "mus_rx", MUS_RX_TASK_STACK_SIZE, (void*) (uint32_t) id,
             MUS_RX_TASK_PRIORITY, rx_task_stack[id], &rx_task_tcb[id]);
         if (rx_task == NULL) {
-#ifdef MUS_USE_EASYLOGGER
-            log_e("MUS %d rx_task create failed", id);
-#endif
             return;
         }
     }
 
     if (inst->config->enable_tx) {
         if (HAL_UART_RegisterCallback(inst->config->huart, HAL_UART_TX_COMPLETE_CB_ID, tx_cplt_callback) != HAL_OK) {
-#ifdef MUS_USE_EASYLOGGER
-            log_e("MUS %d TX_COMPLETE_CB register failed", id);
-#endif
             return;
         }
 
         inst->tx_stream = xStreamBufferCreateStatic(MUS_STREAM_BUFF_SIZE, 1, inst->tx_stream_buf, &inst->tx_stream_cb);
         if (inst->tx_stream == NULL) {
-#ifdef MUS_USE_EASYLOGGER
-            log_e("MUS %d tx_stream create failed", id);
-#endif
             return;
         }
 
         inst->tx_sem = xSemaphoreCreateBinaryStatic(&inst->tx_sem_cb);
         if (inst->tx_sem == NULL) {
-#ifdef MUS_USE_EASYLOGGER
-            log_e("MUS %d tx_sem create failed", id);
-#endif
             return;
         }
 
-        TaskHandle_t tx_task = xTaskCreateStatic(tx_task_entry, "mus_tx", MUS_TX_TASK_STACK_SIZE, (void*) (uint32_t) id,
-            MUS_TX_TASK_PRIORITY, tx_task_stack[id], &tx_task_tcb[id]);
-        if (tx_task == NULL) {
-#ifdef MUS_USE_EASYLOGGER
-            log_e("MUS %d tx_task create failed", id);
-#endif
-        }
+        xTaskCreateStatic(tx_task_entry, "mus_tx", MUS_TX_TASK_STACK_SIZE, (void*) (uint32_t) id, MUS_TX_TASK_PRIORITY,
+            tx_task_stack[id], &tx_task_tcb[id]);
     }
 }
 

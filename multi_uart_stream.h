@@ -13,14 +13,13 @@
 #ifndef __MULTI_UART_STREAM_H_
 #define __MULTI_UART_STREAM_H_
 
-#include "multi_uart_stream_config.h"
-#include <stddef.h>
-#include <stdint.h>
-
 #include "FreeRTOS.h"
+#include "multi_uart_stream_config.h"
 #include "semphr.h"
 #include "stream_buffer.h"
 #include "usart.h"
+#include <stddef.h>
+#include <stdint.h>
 
 /** @name 默认配置（宿主项目可在 multi_uart_stream_config.h 中覆盖） */
 /** @{ */
@@ -34,7 +33,8 @@
 #endif
 
 #ifndef MUS_RX_TASK_STACK_SIZE
-#define MUS_RX_TASK_STACK_SIZE 256 /**< RX 任务栈大小（word），批量模式需容纳 MUS_RX_READ_SIZE 缓冲区；逐字节模式可覆盖为 128 节省内存 */
+#define MUS_RX_TASK_STACK_SIZE \
+    256 /**< RX 任务栈大小（word），批量模式需容纳 MUS_RX_READ_SIZE 缓冲区；逐字节模式可覆盖为 128 节省内存 */
 #endif
 
 #ifndef MUS_TX_TASK_STACK_SIZE
@@ -68,12 +68,11 @@
  *
  * 由宿主项目在 mus_hw_table[] 中填充，每个条目对应一个 UART 实例。
  */
-typedef struct
-{
-    UART_HandleTypeDef *huart; /**< UART 句柄（CubeMX 生成） */
-    uint8_t enable_rx;         /**< 1=启用接收（DMA+IDLE+RX 流+RX 任务） */
-    uint8_t enable_tx;         /**< 1=启用发送（TX 流+TX 任务） */
-    uint8_t use_bulk_rx;       /**< 1=批量接收模式（调用 MUS_ParseData），0=逐字节模式（调用 MUS_ParseByte） */
+typedef struct {
+    UART_HandleTypeDef* huart; /**< UART 句柄（CubeMX 生成） */
+    uint8_t enable_rx; /**< 1=启用接收（DMA+IDLE+RX 流+RX 任务） */
+    uint8_t enable_tx; /**< 1=启用发送（TX 流+TX 任务） */
+    uint8_t use_bulk_rx; /**< 1=批量接收模式（调用 MUS_ParseData），0=逐字节模式（调用 MUS_ParseByte） */
 } MUS_HwConfig_t;
 
 /** @brief 硬件配置表，宿主项目必须定义，大小为 MUS_COUNT */
@@ -97,7 +96,7 @@ void MUS_Init(void);
  * @param pData 待写入数据
  * @param len   数据长度
  */
-void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t *pData, uint16_t len);
+void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t* pData, uint16_t len);
 
 /**
  * @brief 字节解析回调（__weak，宿主项目强覆盖以实现协议解析）
@@ -120,6 +119,6 @@ void MUS_ParseByte(MUS_Id_e id, uint8_t byte);
  * @param data 接收到的数据指针
  * @param len  数据长度（字节）
  */
-void MUS_ParseData(MUS_Id_e id, const uint8_t *data, size_t len);
+void MUS_ParseData(MUS_Id_e id, const uint8_t* data, size_t len);
 
 #endif /* __MULTI_UART_STREAM_H_ */

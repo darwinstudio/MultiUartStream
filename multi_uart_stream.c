@@ -275,9 +275,9 @@ void MUS_Init(void) {
  */
 void MUS_PutDataToTxStream(MUS_Id_e id, const uint8_t* pData, uint16_t len) {
 #ifdef MUS_USE_EASYLOGGER
-    ELOG_ASSERT(id < MUS_COUNT || s_instances[id].config != NULL);
+    ELOG_ASSERT(id < MUS_COUNT && s_instances[id].config != NULL);
     ELOG_ASSERT(s_instances[id].config->enable_tx);
-    ELOG_ASSERT(pData != NULL || len < MUS_STREAM_BUFF_SIZE);
+    ELOG_ASSERT(pData != NULL && len < MUS_STREAM_BUFF_SIZE);
 #else
     if (id >= MUS_COUNT || s_instances[id].config == NULL) {
         return;
